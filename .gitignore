@@ -142,3 +142,21 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# AI-related files & secrets
+*.key
+*.session
+api_keys.json
+*.pem
+
+# References & tracking
+*.pdf
+*.txt
+context.md
+changes.log
+referencerepo.md
+reference_pdfs/
+research_papers/
+References/
+instruction.md
+exampleproposal.md

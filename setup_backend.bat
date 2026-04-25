@@ -14,7 +14,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-docker run --name aigov-postgres -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=aigov -p 5432:5432 -d postgres
+docker run --name aigov-postgres -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=aigov -p 5432:5432 -v aigov_data:/var/lib/postgresql/data -d postgres
 echo [v] Docker container 'aigov-postgres' started on port 5432.
 echo.
 

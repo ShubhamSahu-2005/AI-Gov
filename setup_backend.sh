@@ -13,7 +13,7 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-docker run --name aigov-postgres -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=aigov -p 5432:5432 -d postgres
+docker run --name aigov-postgres -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=aigov -p 5432:5432 -v aigov_data:/var/lib/postgresql/data -d postgres
 echo "✅ Docker container 'aigov-postgres' started on port 5432."
 echo ""
 

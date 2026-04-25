@@ -294,28 +294,43 @@ function TreasuryView({ isLoading, setIsLoading }) {
 
 function AnalyticsView({ isLoading, setIsLoading }) {
   const [analytics, setAnalytics] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const fetchAnalytics = async () => {
+    setIsRefreshing(true);
+    try {
+      const res = await axios.get(`${API_URL}/analytics/overview`, { withCredentials: true });
+      if (res.data.success) {
+        setAnalytics(res.data.data);
+      } else {
+        throw new Error("Failed to load");
+      }
+    } catch (err) {
+      // Fallback demo data
+      setAnalytics({ participationRate: '42.5%', aiAccuracy: '89.2%', comprehensionLift: '+38%' });
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchAnalytics = async () => {
-      try {
-        const res = await axios.get(`${API_URL}/analytics/overview`, { withCredentials: true });
-        if (res.data.success) {
-          setAnalytics(res.data.data);
-        }
-      } catch (err) {
-        // Fallback demo data
-        setAnalytics({ participationRate: '42.5%', aiAccuracy: '89.2%', comprehensionLift: '+38%' });
-      } finally {
-        setIsLoading(false);
-      }
-    };
     fetchAnalytics();
   }, []);
 
   if (isLoading || !analytics) return <div className="animate-pulse h-64 bg-surface/50 rounded-xl"></div>;
 
   return (
-    <div className="glass-panel p-8 text-center space-y-4">
+    <div className="glass-panel p-8 text-center space-y-4 relative">
+      <button 
+        onClick={fetchAnalytics}
+        disabled={isRefreshing}
+        className="absolute top-4 right-4 btn-secondary py-1.5 px-3 text-xs flex items-center gap-2"
+      >
+        <Activity className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+        {isRefreshing ? 'Refreshing...' : 'Refresh'}
+      </button>
+
       <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-accent/20 to-orange-500/20 mx-auto flex items-center justify-center border border-accent/30">
         <Activity className="w-8 h-8 text-accent" />
       </div>

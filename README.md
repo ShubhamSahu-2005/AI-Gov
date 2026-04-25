@@ -13,13 +13,40 @@ AI-Gov is a decentralized, AI-augmented governance platform designed to lower co
 - **Real-time Vote Analytics**: Live dashboard showing quorum progression, approval percentages, and participation rates.
 - **Offline Guest Mode**: Seamlessly explore the dashboard without a Web3 wallet.
 
-## Local Environment Setup Instructions
+## Setup Instructions
 
-### 1. Prerequisites
+We provide two ways to set up the project: **Automated Scripts** (recommended) and **Manual Setup**.
+
+### Method 1: Automated Setup (Recommended)
+This approach automatically provisions your PostgreSQL Docker container, sets up your `.env` variables, installs dependencies, and boots the servers.
+
+**Windows Users**
+1. Double-click `setup_backend.bat` and follow the interactive prompts (it will ask for your Groq API key). Leave the terminal window open.
+2. Double-click `setup_frontend.bat` to boot the UI.
+
+**Linux & macOS Users**
+Make the scripts executable and run them in two separate terminal windows:
+```bash
+# Terminal 1: Backend
+chmod +x setup_backend.sh
+./setup_backend.sh
+
+# Terminal 2: Frontend
+chmod +x setup_frontend.sh
+./setup_frontend.sh
+```
+
+### Method 2: Manual Setup
+
+#### 1. Prerequisites
 Ensure you have the following installed on your machine:
 - [Node.js (v18+)](https://nodejs.org/)
 - [PostgreSQL](https://www.postgresql.org/) or [Docker](https://www.docker.com/) (for spinning up a local database container)
 - MetaMask or Brave Wallet (Optional, guest mode available)
+- Clone the repo
+```bash
+git clone https://github.com/ShubhamSahu-2005/AI-Gov.git
+```
 
 ### 2. Database Setup (Using Docker)
 The easiest way to run the PostgreSQL database locally is via Docker:

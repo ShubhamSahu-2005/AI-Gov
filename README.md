@@ -93,3 +93,10 @@ The application will now be running on `http://localhost:5173`.
 ### 4. JWT Expiry
 - **Issue**: Users are logged out after 15 minutes.
 - **Solution**: The frontend must send `{ withCredentials: true }` in Axios requests to transmit the `httpOnly` refresh token.
+
+### 5. Unexpected behaviour in Dashboard (Wallet Connected Mode)
+- **Issue**: Various bugs related to:
+    - Analytics tab not loading.
+    - AI Delegate not voting on proposals.
+    - User not voting on proposals after voting button is clicked.
+- **Solution**: Reload the page and reconnect the wallet to fix the issue. (Temporary Fix)

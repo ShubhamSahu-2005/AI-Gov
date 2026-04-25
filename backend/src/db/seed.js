@@ -7,12 +7,21 @@ async function seed() {
 
   // ── 1. Users ────────────────────────────────────────────────────────────────
   console.log("Creating users...");
+  // Generate 200 random users
+  const additionalUsers = Array.from({ length: 200 }, (_, i) => ({
+    walletAddress: `0x${crypto.randomBytes(20).toString("hex")}`,
+    name: `Community Member ${i+1}`,
+    role: "member",
+    nonce: crypto.randomBytes(32).toString("hex"),
+  }));
+
   const seedUsers = [
     { walletAddress: "0xad000000000000000000000000000000000000a1", name: "Admin User", role: "admin", nonce: crypto.randomBytes(32).toString("hex") },
     { walletAddress: "0xde000000000000000000000000000000000000a1", name: "Alice Delegate", role: "delegate", nonce: crypto.randomBytes(32).toString("hex") },
     { walletAddress: "0xb0000000000000000000000000000000000000b1", name: "Bob Member", role: "member", nonce: crypto.randomBytes(32).toString("hex") },
     { walletAddress: "0xc0000000000000000000000000000000000000c1", name: "Carol Member", role: "member", nonce: crypto.randomBytes(32).toString("hex") },
     { walletAddress: "0xd0000000000000000000000000000000000000d1", name: "Dave Member", role: "member", nonce: crypto.randomBytes(32).toString("hex") },
+    ...additionalUsers
   ];
 
   const insertedUsers = await db.insert(users).values(seedUsers).returning().onConflictDoNothing();
@@ -177,8 +186,18 @@ async function seed() {
   const voteChoices = ["for", "for", "for", "against", "abstain"];
 
   const voteData = [];
-  for (const proposal of activeProposals.slice(0, 10)) {
-    for (const user of allUsers) {
+  for (let pIndex = 0; pIndex < activeProposals.length; pIndex++) {
+    const proposal = activeProposals[pIndex];
+    
+    // One proposal gets 100+ votes, others get 10-100
+    const numVotes = pIndex === 0 
+      ? Math.floor(Math.random() * 50) + 120 
+      : Math.floor(Math.random() * 90) + 10;
+      
+    const shuffledUsers = [...allUsers].sort(() => 0.5 - Math.random());
+    const voters = shuffledUsers.slice(0, numVotes);
+
+    for (const user of voters) {
       const choice = voteChoices[Math.floor(Math.random() * voteChoices.length)];
       const sawAI = Math.random() > 0.4;
       voteData.push({

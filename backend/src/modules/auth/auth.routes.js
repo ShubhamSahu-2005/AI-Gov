@@ -75,8 +75,13 @@ router.post(
         return res.status(400).json({ success: false, message: "Request nonce first" });
       }
 
-      const message = `Sign this message to login to AI-gov.\nNonce: ${user.nonce}`;
-      const recovered = ethers.verifyMessage(message, signature).toLowerCase();
+      let recovered;
+      try {
+        const message = `Sign this message to login to AI-gov.\nNonce: ${user.nonce}`;
+        recovered = ethers.verifyMessage(message, signature).toLowerCase();
+      } catch (err) {
+        return res.status(401).json({ success: false, message: "Invalid signature format" });
+      }
 
       if (recovered !== walletAddr) {
         return res.status(401).json({ success: false, message: "Invalid signature" });

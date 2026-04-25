@@ -155,13 +155,13 @@ router.get("/proposal/:id/summary", async (req, res, next) => {
   }
 });
 
-// DELETE /votes/:id — retract vote if proposal still active
-router.delete("/:id", async (req, res, next) => {
+// DELETE /votes/proposal/:proposalId — retract vote if proposal still active
+router.delete("/proposal/:proposalId", async (req, res, next) => {
   try {
     const [vote] = await db
       .select()
       .from(votes)
-      .where(eq(votes.id, req.params.id))
+      .where(and(eq(votes.proposalId, req.params.proposalId), eq(votes.voterId, req.user.id)))
       .limit(1);
 
     if (!vote) {
@@ -183,7 +183,7 @@ router.delete("/:id", async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Cannot retract — proposal not active" });
     }
 
-    await db.delete(votes).where(eq(votes.id, req.params.id));
+    await db.delete(votes).where(eq(votes.id, vote.id));
     await cacheDeletePattern(`votes:${vote.proposalId}:*`);
     res.json({ success: true, message: "Vote retracted" });
   } catch (err) {

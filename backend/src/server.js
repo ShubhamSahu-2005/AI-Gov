@@ -1,4 +1,6 @@
 import express from "express";
+import { createServer } from "http";
+import { Server } from "socket.io";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -67,10 +69,36 @@ app.use((req, res) => {
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const httpServer = createServer(app);
+
+// ── WebSocket Server (Phase 4) ────────────────────────────────────────────────
+const io = new Server(httpServer, {
+  path: "/ws",
+  cors: {
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+});
+
+io.on("connection", (socket) => {
+  console.log(`🔌 Client connected to WS: ${socket.id}`);
+  socket.on("disconnect", () => {
+    console.log(`🔌 Client disconnected: ${socket.id}`);
+  });
+});
+
+// Attach io to req so routes can emit events
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
+
+httpServer.listen(PORT, () => {
   console.log(`🚀 AI-Gov API running on http://localhost:${PORT}`);
   console.log(`   Health: http://localhost:${PORT}/health`);
   console.log(`   API:    http://localhost:${PORT}/api/v1`);
+  console.log(`   WS:     ws://localhost:${PORT}/ws`);
 });
 
 export default app;

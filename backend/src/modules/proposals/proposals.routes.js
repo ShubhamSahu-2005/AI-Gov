@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "../../config/db.js";
-import { proposals, users } from "../../db/schema.js";
+import { proposals, users, votes } from "../../db/schema.js";
 import { eq, and, desc } from "drizzle-orm";
 import { authenticate } from "../../middleware/auth.js";
 import { requireAdmin } from "../../middleware/rbac.js";
@@ -20,7 +20,6 @@ const requireUUID = (req, res, next) => {
 };
 
 const router = Router();
-router.use(authenticate);
 
 const createSchema = z.object({
   title: z.string().min(5).max(200),
@@ -52,11 +51,22 @@ router.get("/", async (req, res, next) => {
     if (status) filters.push(eq(proposals.status, status));
     if (category) filters.push(eq(proposals.category, category));
 
-    const rows = await db
+    const allProposals = await db
       .select()
       .from(proposals)
       .where(filters.length ? and(...filters) : undefined)
       .orderBy(desc(proposals.createdAt));
+
+    const allVotes = await db.select().from(votes);
+
+    const rows = allProposals.map(p => {
+      const pVotes = allVotes.filter(v => v.proposalId === p.id);
+      return {
+        ...p,
+        votesFor: pVotes.filter(v => v.choice === 'for').length,
+        votesAgainst: pVotes.filter(v => v.choice === 'against').length,
+      };
+    });
 
     await cacheSet(cacheKey, rows);
     res.json({ success: true, data: rows });
@@ -66,7 +76,7 @@ router.get("/", async (req, res, next) => {
 });
 
 // POST /proposals — create + IPFS upload + AI analysis
-router.post("/", validate(createSchema), async (req, res, next) => {
+router.post("/", authenticate, validate(createSchema), async (req, res, next) => {
   try {
     const { title, description, category, requestedAmount, votingDurationDays } = req.body;
 
@@ -82,37 +92,36 @@ router.post("/", validate(createSchema), async (req, res, next) => {
     const votingEndsAt = new Date();
     votingEndsAt.setDate(votingEndsAt.getDate() + (votingDurationDays || 7));
 
+    // 3. Trigger Groq AI analysis synchronously
+    let aiFields = {};
+    try {
+      const analysis = await analyzeProposal({ title, description, requestedAmount });
+      aiFields = {
+        aiSummary: analysis.summary,
+        aiRiskScore: analysis.ai_risk_score?.toString(),
+        aiRiskBreakdown: analysis.ai_risk_breakdown,
+        aiCategory: analysis.ai_category,
+        aiConfidence: analysis.ai_confidence?.toString(),
+      };
+    } catch (err) {
+      console.error("AI analysis failed:", err.message);
+    }
+
     const [proposal] = await db
       .insert(proposals)
       .values({
         creatorId: req.user.id,
         title,
         description,
-        category,
+        category: aiFields.aiCategory || category,
         requestedAmount: requestedAmount?.toString(),
         votingDurationDays,
         ipfsHash,
         votingEndsAt,
         status: "draft",
+        ...aiFields
       })
       .returning();
-
-    // 3. Trigger Groq AI analysis asynchronously (don't block response)
-    analyzeProposal({ title, description, requestedAmount })
-      .then(async (analysis) => {
-        await db
-          .update(proposals)
-          .set({
-            aiSummary: analysis.summary,
-            aiRiskScore: analysis.ai_risk_score?.toString(),
-            aiRiskBreakdown: analysis.ai_risk_breakdown,
-            aiCategory: analysis.ai_category,
-            aiConfidence: analysis.ai_confidence?.toString(),
-          })
-          .where(eq(proposals.id, proposal.id));
-        await cacheDeletePattern("proposals:*");
-      })
-      .catch((err) => console.error("AI analysis failed:", err.message));
 
     await cacheDeletePattern("proposals:*");
     res.status(201).json({ success: true, data: proposal });
@@ -146,7 +155,7 @@ router.get("/:id", requireUUID, async (req, res, next) => {
 });
 
 // PATCH /proposals/:id — update draft only
-router.patch("/:id", requireUUID, validate(updateSchema), async (req, res, next) => {
+router.patch("/:id", authenticate, requireUUID, validate(updateSchema), async (req, res, next) => {
   try {
     const [proposal] = await db
       .select()
@@ -181,7 +190,7 @@ router.patch("/:id", requireUUID, validate(updateSchema), async (req, res, next)
 });
 
 // DELETE /proposals/:id — delete draft only
-router.delete("/:id", requireUUID, async (req, res, next) => {
+router.delete("/:id", authenticate, requireUUID, async (req, res, next) => {
   try {
     const [proposal] = await db
       .select()
@@ -211,7 +220,7 @@ router.delete("/:id", requireUUID, async (req, res, next) => {
 });
 
 // POST /proposals/:id/submit — Draft → Active
-router.post("/:id/submit", async (req, res, next) => {
+router.post("/:id/submit", authenticate, async (req, res, next) => {
   try {
     const [proposal] = await db
       .select()
@@ -278,7 +287,7 @@ router.get("/:id/ai", async (req, res, next) => {
 });
 
 // PATCH /proposals/:id/label — set manual_label (admin only)
-router.patch("/:id/label", requireAdmin, async (req, res, next) => {
+router.patch("/:id/label", authenticate, requireAdmin, async (req, res, next) => {
   try {
     const { manualLabel } = req.body;
     if (!manualLabel) {

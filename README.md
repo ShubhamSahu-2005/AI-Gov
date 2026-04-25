@@ -1,5 +1,9 @@
 # AI-Gov Platform
 
+<div align="center">
+  <img src="https://raw.githubusercontent.com/ShubhamSahu-2005/AI-Gov/c2927029a4eed877da352a6cac3a32a43cd4faea/frontend/src/assets/logo.png" alt="AI-Gov Logo" width="200" />
+</div>
+
 AI-Gov is a decentralized, AI-augmented governance platform designed to lower cognitive overhead in DAO voting. Using Llama-3.3-70B via Groq, it provides automated proposal summarization, risk scoring, and categorization, allowing DAO members to make faster, more informed decisions without getting bogged down by technical jargon.
 
 ## Key Features

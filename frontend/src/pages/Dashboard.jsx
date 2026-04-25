@@ -299,9 +299,18 @@ function AnalyticsView({ isLoading, setIsLoading }) {
   const fetchAnalytics = async () => {
     setIsRefreshing(true);
     try {
-      const res = await axios.get(`${API_URL}/analytics/overview`, { withCredentials: true });
-      if (res.data.success) {
-        setAnalytics(res.data.data);
+      const [overviewRes, accuracyRes, compRes] = await Promise.all([
+        axios.get(`${API_URL}/analytics/overview`, { withCredentials: true }),
+        axios.get(`${API_URL}/analytics/ai/accuracy`, { withCredentials: true }),
+        axios.get(`${API_URL}/analytics/comprehension`, { withCredentials: true })
+      ]);
+
+      if (overviewRes.data.success && accuracyRes.data.success && compRes.data.success) {
+        setAnalytics({
+          participationRate: `${overviewRes.data.data.avgParticipationPercent}%`,
+          aiAccuracy: `${accuracyRes.data.data.accuracyPercent}%`,
+          comprehensionLift: `+${compRes.data.data.comprehensionGapPercent}%`
+        });
       } else {
         throw new Error("Failed to load");
       }

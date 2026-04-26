@@ -23,7 +23,7 @@ app.use(helmet());
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || "http://localhost:5173",
-    methods: ["GET", "POST", "PATCH", "DELETE"],
+    methods: ["GET", "POST", "PATCH", "PUT", "DELETE"],
     credentials: true,
   })
 );
@@ -52,6 +52,9 @@ app.get("/health", (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// Attach io BEFORE routes so handlers can emit events via req.io
+// (must come after httpServer/io creation below — see bottom of file)
 
 app.use(`${API}/auth`, authRoutes);
 app.use(`${API}/proposals`, proposalRoutes);
@@ -88,8 +91,9 @@ io.on("connection", (socket) => {
   });
 });
 
-// Attach io to req so routes can emit events
-app.use((req, res, next) => {
+// Attach io to req so routes can emit real-time events
+// This middleware runs for every request — must be registered AFTER io is created
+app.use((req, _res, next) => {
   req.io = io;
   next();
 });
@@ -100,5 +104,47 @@ httpServer.listen(PORT, () => {
   console.log(`   API:    http://localhost:${PORT}/api/v1`);
   console.log(`   WS:     ws://localhost:${PORT}/ws`);
 });
+
+import { pool } from "./config/db.js";
+import { redis } from "./config/redis.js";
+
+const gracefulShutdown = async (signal) => {
+  console.log(`\nShutting down gracefully (${signal})...`);
+  
+  // Force shutdown after 2 seconds if connections linger
+  const forceExit = setTimeout(() => {
+    console.error("Forcing shutdown due to lingering connections...");
+    if (signal === "SIGUSR2") {
+      process.kill(process.pid, "SIGUSR2");
+    } else {
+      process.exit(0);
+    }
+  }, 2000);
+
+  // Allow timeout to not block event loop
+  forceExit.unref();
+
+  try {
+    if (pool) await pool.end();
+    if (redis) redis.disconnect();
+    httpServer.close(() => {
+      clearTimeout(forceExit);
+      console.log("HTTP server closed.");
+      if (signal === "SIGUSR2") {
+        process.kill(process.pid, "SIGUSR2");
+      } else {
+        process.exit(0);
+      }
+    });
+  } catch (err) {
+    console.error("Error during shutdown:", err);
+    if (signal === "SIGUSR2") process.kill(process.pid, "SIGUSR2");
+    else process.exit(1);
+  }
+};
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+process.once("SIGUSR2", () => gracefulShutdown("SIGUSR2")); // Nodemon restart
 
 export default app;

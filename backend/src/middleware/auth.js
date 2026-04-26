@@ -8,6 +8,7 @@ export const authenticate = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      console.log("Auth Failed: No token provided in headers:", req.headers);
       return res.status(401).json({ success: false, message: "No token provided" });
     }
 
@@ -39,7 +40,10 @@ export const authenticate = async (req, res, next) => {
   } catch (err) {
     if (err.name === "TokenExpiredError") {
       return res.status(401).json({ success: false, message: "Token expired" });
+    } else if (err.name === "JsonWebTokenError" || err.name === "NotBeforeError") {
+      return res.status(401).json({ success: false, message: "Invalid token" });
     }
-    return res.status(401).json({ success: false, message: "Invalid token" });
+    // If it's a database connection error, pass it to the 500 handler
+    next(err);
   }
 };

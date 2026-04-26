@@ -9,7 +9,7 @@ import { validate } from "../../middleware/validate.js";
 import { treasuryContract } from "../../config/blockchain.js";
 
 const router = Router();
-router.use(authenticate);
+// Treasury GET endpoints are public — no auth required for dashboard overview
 
 // GET /treasury/balance — ETH balance from DAOTreasury contract
 router.get("/balance", async (req, res, next) => {
@@ -89,7 +89,7 @@ router.get("/analytics", async (req, res, next) => {
 });
 
 // POST /treasury/seed — add demo transactions (admin only)
-router.post("/seed", requireAdmin, async (req, res, next) => {
+router.post("/seed", authenticate, requireAdmin, async (req, res, next) => {
   try {
     const seedData = [
       { type: "inflow", asset: "ETH", amount: "10.0", description: "Initial DAO treasury funding" },

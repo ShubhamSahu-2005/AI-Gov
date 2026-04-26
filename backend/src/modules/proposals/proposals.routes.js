@@ -84,6 +84,7 @@ router.post("/", authenticate, validate(createSchema), async (req, res, next) =>
     let ipfsHash = null;
     try {
       ipfsHash = await uploadProposalToIPFS({ title, description, category, requestedAmount });
+      if (ipfsHash) console.log("📦 IPFS CID generated:", ipfsHash);
     } catch (ipfsErr) {
       console.warn("IPFS upload skipped:", ipfsErr.message);
     }
@@ -306,6 +307,58 @@ router.patch("/:id/label", authenticate, requireAdmin, async (req, res, next) =>
 
     await cacheDelete(`proposal:${req.params.id}`);
     res.json({ success: true, data: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /proposals/:id/execute — Active → Executed + Treasury Outflow
+router.post("/:id/execute", authenticate, requireUUID, async (req, res, next) => {
+  try {
+    const [proposal] = await db
+      .select()
+      .from(proposals)
+      .where(eq(proposals.id, req.params.id))
+      .limit(1);
+
+    if (!proposal) {
+      return res.status(404).json({ success: false, message: "Proposal not found" });
+    }
+
+    if (proposal.status !== "active") {
+      return res.status(400).json({ success: false, message: `Cannot execute ${proposal.status} proposal` });
+    }
+
+    // 1. Calculate votes
+    const allVotes = await db.select().from(votes).where(eq(votes.proposalId, req.params.id));
+    const forVotes = allVotes.filter(v => v.choice === 'for').length;
+    const againstVotes = allVotes.filter(v => v.choice === 'against').length;
+
+    const passed = forVotes > againstVotes;
+
+    // 2. Update status
+    const newStatus = passed ? "executed" : "rejected";
+    const [updated] = await db
+      .update(proposals)
+      .set({ status: newStatus })
+      .where(eq(proposals.id, req.params.id))
+      .returning();
+
+    // 3. If passed and has requestedAmount, create Treasury outflow
+    if (passed && proposal.requestedAmount && parseFloat(proposal.requestedAmount) > 0) {
+      const { treasuryTransactions } = await import("../../db/schema.js");
+      await db.insert(treasuryTransactions).values({
+        type: "outflow",
+        asset: "ETH",
+        amount: proposal.requestedAmount,
+        description: `Payout for Proposal: ${proposal.title}`,
+        proposalId: proposal.id,
+      });
+    }
+
+    await cacheDelete(`proposal:${req.params.id}`);
+    await cacheDeletePattern("proposals:*");
+    res.json({ success: true, data: updated, message: passed ? "Proposal passed and executed" : "Proposal rejected" });
   } catch (err) {
     next(err);
   }

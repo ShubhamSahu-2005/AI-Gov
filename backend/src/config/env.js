@@ -1,6 +1,6 @@
 import { z } from "zod";
 import dotenv from "dotenv";
-dotenv.config();
+dotenv.config({ override: true });
 
 const envSchema = z.object({
   PORT: z.string().default("3000"),
@@ -12,6 +12,7 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(1),
   PINATA_API_KEY: z.string().optional(),
   PINATA_SECRET: z.string().optional(),
+  PINATA_JWT: z.string().optional(),
   ALCHEMY_SEPOLIA_URL: z.string().optional(),
   DAO_TOKEN_ADDRESS: z.string().optional(),
   DAO_GOVERNANCE_ADDRESS: z.string().optional(),

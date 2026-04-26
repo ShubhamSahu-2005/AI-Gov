@@ -24,44 +24,49 @@ export default function CreateProposalModal({ isOpen, onClose, onSuccess }) {
 
   if (!isOpen) return null;
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     if (!formData.title || !formData.description) return toast.error('Please fill all required fields');
     setStep(2);
     setIsAnalyzing(true);
-    
-    // Simulate AI delay
-    setTimeout(() => {
-      setIsAnalyzing(false);
-      const mockCategories = ['Technical', 'Governance', 'Budget', 'Community', 'Partnership'];
-      const autoCategory = mockCategories[Math.floor(Math.random() * mockCategories.length)];
-      setAiResult({
-        aiRiskScore: (Math.random() * 5 + 3).toFixed(1), // 3.0 to 8.0
-        aiCategory: autoCategory,
-        aiSummary: `AI Summary: This proposal seeks to address ${autoCategory} aspects by introducing "${formData.title}". It appears well-structured but carries some implementation risks depending on scope.`
-      });
-    }, 1500);
-  };
 
-  const handleSubmit = async () => {
-    setIsSubmitting(true);
     try {
       const payload = {
-        ...formData,
-        requestedAmount: Number(formData.requestedAmount) || 0
+        title: formData.title,
+        description: formData.description,
+        requestedAmount: Number(formData.requestedAmount) || 0,
       };
       const res = await axios.post(`${API_URL}/proposals`, payload, { withCredentials: true });
       if (res.data.success) {
-        setStep(3);
-        onSuccess(res.data.data);
+        const p = res.data.data;
+        setAiResult({
+          proposal: p,
+          aiRiskScore: p.aiRiskScore ?? 'N/A',
+          aiCategory: p.aiCategory ?? p.category ?? 'Uncategorized',
+          aiSummary: p.aiSummary ?? 'AI analysis was not available for this proposal.',
+        });
       } else {
-        toast.error(res.data.message || 'Failed to create proposal');
+        throw new Error(res.data.message || 'Failed to create proposal');
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Database disconnected. Failed to create proposal.');
+      toast.error(err.response?.data?.message || 'Failed to connect to backend. Is the server running?');
+      setStep(1);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!aiResult?.proposal) return;
+    setIsSubmitting(true);
+    try {
+      // Proposal is already created in handleAnalyze — just notify parent & advance
+      setStep(3);
+      onSuccess(aiResult.proposal);
     } finally {
       setIsSubmitting(false);
     }
   };
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">

@@ -6,7 +6,7 @@ import { authenticate } from "../../middleware/auth.js";
 import { cacheGet, cacheSet } from "../../services/cacheService.js";
 
 const router = Router();
-router.use(authenticate);
+// Analytics routes are read-only — no auth required for dashboard overview
 
 // GET /analytics/overview
 router.get("/overview", async (req, res, next) => {

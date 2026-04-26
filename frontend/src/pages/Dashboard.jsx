@@ -216,17 +216,52 @@ function ProposalsView({ address, wsEvents, isLoading, setIsLoading }) {
 
 function TreasuryView({ isLoading, setIsLoading }) {
   const [treasury, setTreasury] = useState(null);
+  const [chartData, setChartData] = useState([]);
 
   useEffect(() => {
     const fetchTreasury = async () => {
       try {
-        const res = await axios.get(`${API_URL}/treasury/balance`, { withCredentials: true });
-        if (res.data.success) {
-          setTreasury(res.data.data);
+        const [balRes, txRes] = await Promise.all([
+          axios.get(`${API_URL}/treasury/balance`, { withCredentials: true }),
+          axios.get(`${API_URL}/treasury/transactions`, { withCredentials: true }).catch(() => ({ data: { data: [] } })),
+        ]);
+
+        if (balRes.data.success) {
+          const { dbBalance, onChainBalance, currency } = balRes.data.data;
+          const txs = txRes.data.data || [];
+
+          // Build per-asset totals from transactions
+          const assetMap = {};
+          txs.forEach(tx => {
+            const key = tx.asset || 'ETH';
+            const amt = parseFloat(tx.amount) || 0;
+            if (!assetMap[key]) assetMap[key] = 0;
+            assetMap[key] += tx.type === 'inflow' ? amt : -amt;
+          });
+
+          const colors = ['#10b981', '#4f46e5', '#f97316', '#8b5cf6', '#06b6d4'];
+          const assets = Object.entries(assetMap).map(([name, value], i) => ({
+            name,
+            value: Math.max(0, parseFloat(value.toFixed(4))),
+            color: colors[i % colors.length],
+          }));
+
+          // If no transactions yet, show the DB balance as a single ETH entry
+          const finalAssets = assets.length > 0 ? assets : [
+            { name: currency || 'ETH', value: Math.abs(dbBalance || 0), color: '#10b981' }
+          ];
+
+          const total = finalAssets.reduce((s, a) => s + a.value, 0);
+          setTreasury({ total, dbBalance, onChainBalance, currency });
+          setChartData(finalAssets);
         }
       } catch (err) {
-        // Fallback for demo
-        setTreasury({ total: 1240500, assets: [{ name: 'USDC', value: 1000000, color: '#10b981' }, { name: 'DAO Token', value: 240500, color: '#4f46e5' }] });
+        // Fallback demo data
+        setTreasury({ total: 15.25 });
+        setChartData([
+          { name: 'ETH', value: 15.25, color: '#10b981' },
+          { name: 'AGT', value: 45000, color: '#4f46e5' },
+        ]);
       } finally {
         setIsLoading(false);
       }
@@ -236,10 +271,11 @@ function TreasuryView({ isLoading, setIsLoading }) {
 
   if (isLoading || !treasury) return <div className="animate-pulse h-64 bg-surface/50 rounded-xl"></div>;
 
-  const chartData = treasury.assets || [
-    { name: 'USDC', value: 1000000, color: '#10b981' },
-    { name: 'DAO Token', value: 240500, color: '#4f46e5' }
-  ];
+  const displayTotal = treasury.onChainBalance?.eth
+    ? `${treasury.onChainBalance.eth} ETH`
+    : treasury.dbBalance != null
+    ? `${treasury.dbBalance} ${treasury.currency || 'ETH'}`
+    : `${treasury.total?.toLocaleString()}`;
 
   return (
     <div className="glass-panel p-8 space-y-8">
@@ -249,8 +285,11 @@ function TreasuryView({ isLoading, setIsLoading }) {
         </div>
         <h3 className="text-2xl font-semibold">Treasury Balance</h3>
         <p className="text-5xl font-bold font-mono tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70">
-          ${treasury.total?.toLocaleString() || '1,240,500'}
+          {displayTotal}
         </p>
+        {treasury.onChainBalance && (
+          <p className="text-xs text-muted">On-chain: {treasury.onChainBalance.eth} ETH</p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center max-w-4xl mx-auto border-t border-white/5 pt-8">
@@ -283,7 +322,7 @@ function TreasuryView({ isLoading, setIsLoading }) {
                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: asset.color || '#fff' }}></div>
                 <span className="font-medium text-white/90">{asset.name}</span>
               </div>
-              <span className="font-mono text-lg font-bold">${asset.value.toLocaleString()}</span>
+              <span className="font-mono text-lg font-bold">{asset.value.toLocaleString()}</span>
             </div>
           ))}
         </div>

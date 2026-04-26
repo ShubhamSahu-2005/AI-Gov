@@ -15,6 +15,11 @@ export default function ProposalDetail({ address }) {
   const [proposal, setProposal] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const [startTime] = useState(Date.now());
+  const [showComprehensionModal, setShowComprehensionModal] = useState(false);
+  const [comprehensionScore, setComprehensionScore] = useState(0);
+  const [submittingComprehension, setSubmittingComprehension] = useState(false);
+
   useEffect(() => {
     const match = proposals.find(p => p.id === id);
     if (match) {
@@ -54,11 +59,54 @@ export default function ProposalDetail({ address }) {
     if (!address) return toast.error("Please connect your wallet first");
     
     try {
-      await axios.post(`${API_URL}/votes`, { proposalId: id, choice: type }, { withCredentials: true });
+      const timeOnPageSeconds = Math.round((Date.now() - startTime) / 1000);
+      const sawAiSummary = !!proposal.aiSummary;
+
+      await axios.post(`${API_URL}/votes`, { 
+        proposalId: id, 
+        choice: type,
+        sawAiSummary,
+        timeOnPageSeconds
+      }, { withCredentials: true });
+      
       toast.success(`Successfully voted ${type.toUpperCase()}`);
       voteOnProposal(id, type, address);
+      
+      // Trigger comprehension modal
+      setShowComprehensionModal(true);
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to vote");
+    }
+  };
+
+  const submitComprehension = async () => {
+    if (comprehensionScore === 0) return toast.error("Please select a score");
+    setSubmittingComprehension(true);
+    try {
+      await axios.post(`${API_URL}/votes/comprehension`, {
+        proposalId: id,
+        comprehensionScore,
+        sawAiSummary: !!proposal.aiSummary,
+        timeOnPageSeconds: Math.round((Date.now() - startTime) / 1000)
+      }, { withCredentials: true });
+      
+      toast.success("Thank you for your feedback!");
+      setShowComprehensionModal(false);
+    } catch (err) {
+      toast.error("Failed to save rating");
+    } finally {
+      setSubmittingComprehension(false);
+    }
+  };
+
+  const handleExecute = async () => {
+    try {
+      const res = await axios.post(`${API_URL}/proposals/${id}/execute`, {}, { withCredentials: true });
+      toast.success(res.data.message);
+      setProposal({ ...proposal, status: res.data.data.status });
+      if (updateProposal) updateProposal(id, { status: res.data.data.status });
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Execution failed");
     }
   };
 
@@ -85,9 +133,17 @@ export default function ProposalDetail({ address }) {
     if (score > 8 && delegateConfig.strategy === 'conservative') decision = 'against';
 
     try {
-      await axios.post(`${API_URL}/votes`, { proposalId: id, choice: decision }, { withCredentials: true });
+      const timeOnPageSeconds = Math.round((Date.now() - startTime) / 1000);
+      await axios.post(`${API_URL}/votes`, { 
+        proposalId: id, 
+        choice: decision,
+        sawAiSummary: true,
+        timeOnPageSeconds
+      }, { withCredentials: true });
+      
       toast.success(`AI Delegate voted ${decision.toUpperCase()}: Risk score is within your tolerance.`);
       voteOnProposal(id, decision, address);
+      setShowComprehensionModal(true);
     } catch (err) {
       toast.error(err.response?.data?.message || "AI Delegate failed to vote");
     }
@@ -96,14 +152,14 @@ export default function ProposalDetail({ address }) {
   const userVote = votes[id]?.[address];
   const hasVoted = !!userVote;
 
-  const totalVotes = (proposal?.votesFor || 0) + (proposal?.votesAgainst || 0);
+  const totalVotes = (proposal?.votesFor || 0) + (proposal?.votesAgainst || 0) + (proposal?.votesAbstain || 0);
   const approvalPercent = totalVotes > 0 ? Math.round(((proposal?.votesFor || 0) / totalVotes) * 100) : 0;
 
   if (loading) return <div className="animate-pulse flex items-center justify-center p-20">Loading...</div>;
   if (!proposal) return <div className="text-center p-20 text-white">Proposal not found</div>;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
+    <div className="max-w-4xl mx-auto space-y-8 animate-fade-in pb-20">
       <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-muted hover:text-white transition-colors">
         <ArrowLeft className="w-5 h-5" /> Back to Dashboard
       </button>
@@ -134,6 +190,7 @@ export default function ProposalDetail({ address }) {
             </div>
             <div className="flex justify-between text-xs text-muted">
               <span>{proposal.votesFor || 0} For</span>
+              <span>{proposal.votesAbstain || 0} Abstain</span>
               <span>{proposal.votesAgainst || 0} Against</span>
             </div>
           </div>
@@ -160,13 +217,18 @@ export default function ProposalDetail({ address }) {
             </button>
           ) : hasVoted ? (
             <div className="flex flex-col items-end gap-3">
-              <div className={`px-6 py-3 rounded-xl border flex items-center gap-2 font-bold ${userVote === 'for' ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
-                {userVote === 'for' ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+              <div className={`px-6 py-3 rounded-xl border flex items-center gap-2 font-bold ${userVote === 'for' ? 'bg-green-500/10 border-green-500/30 text-green-400' : userVote === 'against' ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-white/10 border-white/20 text-white'}`}>
+                {userVote === 'for' ? <CheckCircle2 className="w-5 h-5" /> : userVote === 'against' ? <XCircle className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
                 Voted {userVote.toUpperCase()}
               </div>
-              <button onClick={handleRevoke} className="flex items-center gap-1.5 text-xs text-muted hover:text-white transition-colors">
-                <Undo2 className="w-3.5 h-3.5" /> Revoke Vote
-              </button>
+              <div className="flex items-center gap-4">
+                <button onClick={handleExecute} className="px-4 py-1.5 rounded-lg bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30 transition-all text-xs font-bold">
+                  Finalize Proposal
+                </button>
+                <button onClick={handleRevoke} className="flex items-center gap-1.5 text-xs text-muted hover:text-white transition-colors">
+                  <Undo2 className="w-3.5 h-3.5" /> Revoke Vote
+                </button>
+              </div>
             </div>
           ) : (
             <div className="flex flex-col md:flex-row w-full md:w-auto gap-4">
@@ -175,25 +237,83 @@ export default function ProposalDetail({ address }) {
                   onClick={handleAIVote}
                   className="flex-1 md:flex-none flex items-center justify-center gap-2 px-8 py-3 bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30 border border-indigo-500/40 rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/10"
                 >
-                  <Bot className="w-5 h-5" /> Vote with AI Delegate
+                  <Bot className="w-5 h-5" /> Vote with AI
                 </button>
               )}
               <button 
                 onClick={() => handleVote('against')}
                 className="flex-1 md:flex-none flex items-center justify-center gap-2 px-8 py-3 bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 rounded-xl font-bold transition-colors"
               >
-                <ThumbsDown className="w-5 h-5" /> Vote Against
+                <ThumbsDown className="w-5 h-5" /> Against
+              </button>
+              <button 
+                onClick={() => handleVote('abstain')}
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 px-8 py-3 bg-white/5 text-white/60 hover:bg-white/10 border border-white/10 rounded-xl font-bold transition-colors"
+              >
+                Abstain
               </button>
               <button 
                 onClick={() => handleVote('for')}
                 className="flex-1 md:flex-none flex items-center justify-center gap-2 px-8 py-3 bg-green-500/10 text-green-400 hover:bg-green-500/20 border border-green-500/30 rounded-xl font-bold transition-colors"
               >
-                <ThumbsUp className="w-5 h-5" /> Vote For
+                <ThumbsUp className="w-5 h-5" /> For
               </button>
             </div>
           )}
         </div>
       </div>
+
+      {showComprehensionModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-fade-in">
+          <div className="glass-panel max-w-md w-full p-8 space-y-6 shadow-2xl border-primary/20">
+            <div className="text-center space-y-2">
+              <div className="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <BrainCircuit className="w-8 h-8 text-primary" />
+              </div>
+              <h2 className="text-2xl font-bold text-white">How well did you grasp this?</h2>
+              <p className="text-muted">Your rating helps us improve AI-assisted governance.</p>
+            </div>
+
+            <div className="flex justify-center gap-2">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
+                <button
+                  key={num}
+                  onClick={() => setComprehensionScore(num)}
+                  className={`w-8 h-10 rounded-lg flex items-center justify-center font-bold transition-all ${
+                    comprehensionScore === num 
+                      ? 'bg-primary text-white scale-110' 
+                      : 'bg-white/5 text-muted hover:bg-white/10'
+                  }`}
+                >
+                  {num}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex justify-between text-xs text-muted px-2">
+              <span>Very Confusing</span>
+              <span>Perfectly Clear</span>
+            </div>
+
+            <div className="flex gap-4 pt-4">
+              <button 
+                onClick={() => setShowComprehensionModal(false)}
+                className="flex-1 py-3 rounded-xl bg-white/5 text-white hover:bg-white/10 transition-colors font-medium"
+              >
+                Skip
+              </button>
+              <button 
+                onClick={submitComprehension}
+                disabled={submittingComprehension || comprehensionScore === 0}
+                className="flex-1 py-3 rounded-xl btn-primary font-bold disabled:opacity-50"
+              >
+                {submittingComprehension ? 'Saving...' : 'Submit Rating'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+
   );
 }

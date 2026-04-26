@@ -19,9 +19,8 @@
     "@pinata/sdk": "^2.1.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
     "drizzle-orm": "^0.44.0",
-    "ethers": "^6.13.5",
+    "ethers": "^6.16.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.2",
     "groq-sdk": "^1.1.2",
@@ -36,7 +35,15 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox-viem": "^5.0.4",
+    "@nomicfoundation/hardhat-viem": "^3.0.6",
+    "@types/node": "^22.19.17",
+    "dotenv": "^17.4.2",
     "drizzle-kit": "^0.31.10",
-    "nodemon": "^3.1.14"
+    "forge-std": "github:foundry-rs/forge-std#v1.9.4",
+    "hardhat": "^3.4.1",
+    "nodemon": "^3.1.14",
+    "typescript": "~5.8.0",
+    "viem": "^2.48.4"
   }
 }

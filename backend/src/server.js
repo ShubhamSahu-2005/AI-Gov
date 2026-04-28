@@ -106,7 +106,6 @@ httpServer.listen(PORT, () => {
 });
 
 import { pool } from "./config/db.js";
-import { redis } from "./config/redis.js";
 
 const gracefulShutdown = async (signal) => {
   console.log(`\nShutting down gracefully (${signal})...`);
@@ -126,7 +125,6 @@ const gracefulShutdown = async (signal) => {
 
   try {
     if (pool) await pool.end();
-    if (redis) redis.disconnect();
     httpServer.close(() => {
       clearTimeout(forceExit);
       console.log("HTTP server closed.");

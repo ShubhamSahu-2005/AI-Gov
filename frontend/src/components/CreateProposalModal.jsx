@@ -12,6 +12,7 @@ export default function CreateProposalModal({ isOpen, onClose, onSuccess }) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiResult, setAiResult] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createdProposalId, setCreatedProposalId] = useState(null);
 
   // Reset state when modal opens
   useEffect(() => {
@@ -19,6 +20,7 @@ export default function CreateProposalModal({ isOpen, onClose, onSuccess }) {
       setStep(1);
       setFormData({ title: '', description: '', requestedAmount: '' });
       setAiResult(null);
+      setCreatedProposalId(null);
     }
   }, [isOpen]);
 
@@ -35,9 +37,19 @@ export default function CreateProposalModal({ isOpen, onClose, onSuccess }) {
         description: formData.description,
         requestedAmount: Number(formData.requestedAmount) || 0,
       };
-      const res = await axios.post(`${API_URL}/proposals`, payload, { withCredentials: true });
+
+      let res;
+      if (createdProposalId) {
+        // Proposal was already created — update it instead of creating a duplicate
+        res = await axios.patch(`${API_URL}/proposals/${createdProposalId}`, payload, { withCredentials: true });
+      } else {
+        // First time — create the proposal
+        res = await axios.post(`${API_URL}/proposals`, payload, { withCredentials: true });
+      }
+
       if (res.data.success) {
         const p = res.data.data;
+        setCreatedProposalId(p.id);
         setAiResult({
           proposal: p,
           aiRiskScore: p.aiRiskScore ?? 'N/A',
@@ -59,7 +71,7 @@ export default function CreateProposalModal({ isOpen, onClose, onSuccess }) {
     if (!aiResult?.proposal) return;
     setIsSubmitting(true);
     try {
-      // Proposal is already created in handleAnalyze — just notify parent & advance
+      // Proposal is already created/updated — just notify parent & advance
       setStep(3);
       onSuccess(aiResult.proposal);
     } finally {

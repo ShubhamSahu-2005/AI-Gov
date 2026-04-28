@@ -155,7 +155,7 @@ router.get("/:id", requireUUID, async (req, res, next) => {
   }
 });
 
-// PATCH /proposals/:id — update draft only
+// PATCH /proposals/:id — update draft only (re-runs AI analysis)
 router.patch("/:id", authenticate, requireUUID, validate(updateSchema), async (req, res, next) => {
   try {
     const [proposal] = await db
@@ -176,9 +176,33 @@ router.patch("/:id", authenticate, requireUUID, validate(updateSchema), async (r
       return res.status(403).json({ success: false, message: "Not authorized" });
     }
 
+    // Re-run AI analysis if title or description changed
+    let aiFields = {};
+    const titleChanged = req.body.title && req.body.title !== proposal.title;
+    const descChanged = req.body.description && req.body.description !== proposal.description;
+    if (titleChanged || descChanged) {
+      try {
+        const analysis = await analyzeProposal({
+          title: req.body.title || proposal.title,
+          description: req.body.description || proposal.description,
+          requestedAmount: req.body.requestedAmount ?? proposal.requestedAmount,
+        });
+        aiFields = {
+          aiSummary: analysis.summary,
+          aiRiskScore: analysis.ai_risk_score?.toString(),
+          aiRiskBreakdown: analysis.ai_risk_breakdown,
+          aiCategory: analysis.ai_category,
+          aiConfidence: analysis.ai_confidence?.toString(),
+          category: analysis.ai_category || req.body.category || proposal.category,
+        };
+      } catch (aiErr) {
+        console.error("AI re-analysis failed on PATCH:", aiErr.message);
+      }
+    }
+
     const [updated] = await db
       .update(proposals)
-      .set(req.body)
+      .set({ ...req.body, ...aiFields })
       .where(eq(proposals.id, req.params.id))
       .returning();
 

@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutGrid, Landmark, BarChart3, ArrowRight, BrainCircuit, Activity, Plus } from 'lucide-react';
+import { LayoutGrid, BarChart3, ArrowRight, BrainCircuit, Activity, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
 import { useWebSocket } from '../hooks/useWebSocket';
 import CreateProposalModal from '../components/CreateProposalModal';
 import AIDelegatePanel from '../components/AIDelegatePanel';
@@ -20,7 +20,7 @@ export default function Dashboard({ address }) {
 
   const tabs = [
     { id: 'proposals', label: 'Active Proposals', icon: LayoutGrid },
-    { id: 'treasury', label: 'Treasury Tracking', icon: Landmark },
+    { id: 'category-distribution', label: 'Category Distribution', icon: BrainCircuit },
     { id: 'analytics', label: 'Governance Analytics', icon: BarChart3 },
     { id: 'ai-delegate', label: 'AI Delegate Settings', icon: Bot },
   ];
@@ -72,7 +72,7 @@ export default function Dashboard({ address }) {
             transition={{ duration: 0.3 }}
           >
             {activeTab === 'proposals' && <ProposalsView address={address} wsEvents={events} isLoading={isLoading} setIsLoading={setIsLoading} />}
-            {activeTab === 'treasury' && <TreasuryView isLoading={isLoading} setIsLoading={setIsLoading} />}
+            {activeTab === 'category-distribution' && <CategoryDistributionView isLoading={isLoading} setIsLoading={setIsLoading} />}
             {activeTab === 'analytics' && <AnalyticsView isLoading={isLoading} setIsLoading={setIsLoading} />}
             {activeTab === 'ai-delegate' && (
               <div className="max-w-4xl mx-auto">
@@ -214,117 +214,107 @@ function ProposalsView({ address, wsEvents, isLoading, setIsLoading }) {
   );
 }
 
-function TreasuryView({ isLoading, setIsLoading }) {
-  const [treasury, setTreasury] = useState(null);
+function CategoryDistributionView({ isLoading, setIsLoading }) {
   const [chartData, setChartData] = useState([]);
+  const [totalProposals, setTotalProposals] = useState(0);
+
+  const CATEGORY_COLORS = {
+    budget: '#f97316',
+    governance: '#8b5cf6',
+    technical: '#06b6d4',
+    partnership: '#10b981',
+    community: '#ec4899',
+  };
 
   useEffect(() => {
-    const fetchTreasury = async () => {
+    const fetchCategories = async () => {
       try {
-        const [balRes, txRes] = await Promise.all([
-          axios.get(`${API_URL}/treasury/balance`, { withCredentials: true }),
-          axios.get(`${API_URL}/treasury/transactions`, { withCredentials: true }).catch(() => ({ data: { data: [] } })),
-        ]);
-
-        if (balRes.data.success) {
-          const { dbBalance, onChainBalance, currency } = balRes.data.data;
-          const txs = txRes.data.data || [];
-
-          // Build per-asset totals from transactions
-          const assetMap = {};
-          txs.forEach(tx => {
-            const key = tx.asset || 'ETH';
-            const amt = parseFloat(tx.amount) || 0;
-            if (!assetMap[key]) assetMap[key] = 0;
-            assetMap[key] += tx.type === 'inflow' ? amt : -amt;
-          });
-
-          const colors = ['#10b981', '#4f46e5', '#f97316', '#8b5cf6', '#06b6d4'];
-          const assets = Object.entries(assetMap).map(([name, value], i) => ({
-            name,
-            value: Math.max(0, parseFloat(value.toFixed(4))),
-            color: colors[i % colors.length],
+        const res = await axios.get(`${API_URL}/analytics/proposals/by-category`, { withCredentials: true });
+        if (res.data.success && res.data.data.length > 0) {
+          const mapped = res.data.data.map(row => ({
+            name: (row.category || 'uncategorized').charAt(0).toUpperCase() + (row.category || 'uncategorized').slice(1),
+            value: Number(row.count),
+            color: CATEGORY_COLORS[row.category] || '#64748b',
           }));
-
-          // If no transactions yet, show the DB balance as a single ETH entry
-          const finalAssets = assets.length > 0 ? assets : [
-            { name: currency || 'ETH', value: Math.abs(dbBalance || 0), color: '#10b981' }
-          ];
-
-          const total = finalAssets.reduce((s, a) => s + a.value, 0);
-          setTreasury({ total, dbBalance, onChainBalance, currency });
-          setChartData(finalAssets);
+          setChartData(mapped);
+          setTotalProposals(mapped.reduce((s, r) => s + r.value, 0));
+        } else {
+          throw new Error('empty');
         }
-      } catch (err) {
+      } catch {
         // Fallback demo data
-        setTreasury({ total: 15.25 });
-        setChartData([
-          { name: 'ETH', value: 15.25, color: '#10b981' },
-          { name: 'AGT', value: 45000, color: '#4f46e5' },
-        ]);
+        const fallback = [
+          { name: 'Technical', value: 5, color: '#06b6d4' },
+          { name: 'Budget', value: 4, color: '#f97316' },
+          { name: 'Governance', value: 3, color: '#8b5cf6' },
+          { name: 'Community', value: 2, color: '#ec4899' },
+          { name: 'Partnership', value: 1, color: '#10b981' },
+        ];
+        setChartData(fallback);
+        setTotalProposals(fallback.reduce((s, r) => s + r.value, 0));
       } finally {
         setIsLoading(false);
       }
     };
-    fetchTreasury();
+    fetchCategories();
   }, []);
 
-  if (isLoading || !treasury) return <div className="animate-pulse h-64 bg-surface/50 rounded-xl"></div>;
-
-  const displayTotal = treasury.onChainBalance?.eth
-    ? `${treasury.onChainBalance.eth} ETH`
-    : treasury.dbBalance != null
-    ? `${treasury.dbBalance} ${treasury.currency || 'ETH'}`
-    : `${treasury.total?.toLocaleString()}`;
+  if (isLoading || chartData.length === 0) return <div className="animate-pulse h-64 bg-surface/50 rounded-xl"></div>;
 
   return (
     <div className="glass-panel p-8 space-y-8">
       <div className="text-center space-y-4">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-secondary/20 to-teal-500/20 mx-auto flex items-center justify-center border border-secondary/30">
-          <Landmark className="w-8 h-8 text-secondary" />
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-500/20 to-cyan-500/20 mx-auto flex items-center justify-center border border-purple-500/30">
+          <BrainCircuit className="w-8 h-8 text-purple-400" />
         </div>
-        <h3 className="text-2xl font-semibold">Treasury Balance</h3>
-        <p className="text-5xl font-bold font-mono tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70">
-          {displayTotal}
-        </p>
-        {treasury.onChainBalance && (
-          <p className="text-xs text-muted">On-chain: {treasury.onChainBalance.eth} ETH</p>
-        )}
+        <h3 className="text-2xl font-semibold text-white">Proposals by Category</h3>
+        <p className="text-muted text-sm">Showing how <span className="text-white font-mono font-bold">{totalProposals}</span> proposals are distributed across categories</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center max-w-4xl mx-auto border-t border-white/5 pt-8">
-        <div className="h-64">
+        <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
                 data={chartData}
-                innerRadius={60}
-                outerRadius={80}
-                paddingAngle={5}
+                innerRadius={65}
+                outerRadius={100}
+                paddingAngle={4}
                 dataKey="value"
+                animationBegin={0}
+                animationDuration={800}
+                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                labelLine={{ stroke: 'rgba(255,255,255,0.3)' }}
               >
                 {chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color || '#4f46e5'} />
+                  <Cell key={`cell-${index}`} fill={entry.color} stroke="transparent" />
                 ))}
               </Pie>
-              <Tooltip 
-                contentStyle={{ backgroundColor: '#151520', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '8px' }}
-                itemStyle={{ color: '#fff' }}
+              <Tooltip
+                contentStyle={{ backgroundColor: '#151520', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px', padding: '12px 16px' }}
+                itemStyle={{ color: '#fff', fontWeight: 600 }}
+                formatter={(value, name) => [`${value} proposal${value > 1 ? 's' : ''}`, name]}
               />
             </PieChart>
           </ResponsiveContainer>
         </div>
-        
-        <div className="space-y-4">
-          {chartData.map((asset, idx) => (
-            <div key={idx} className="bg-surface/50 p-4 rounded-xl flex justify-between items-center border border-white/5">
-              <div className="flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: asset.color || '#fff' }}></div>
-                <span className="font-medium text-white/90">{asset.name}</span>
+
+        <div className="space-y-3">
+          {chartData.map((cat, idx) => {
+            const pct = totalProposals > 0 ? ((cat.value / totalProposals) * 100).toFixed(1) : 0;
+            return (
+              <div key={idx} className="bg-surface/50 p-4 rounded-xl flex justify-between items-center border border-white/5 hover:border-white/10 transition-colors group">
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color }}></div>
+                  <span className="font-medium text-white/90">{cat.name}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-muted">{pct}%</span>
+                  <span className="font-mono text-lg font-bold text-white">{cat.value}</span>
+                </div>
               </div>
-              <span className="font-mono text-lg font-bold">{asset.value.toLocaleString()}</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
@@ -333,6 +323,7 @@ function TreasuryView({ isLoading, setIsLoading }) {
 
 function AnalyticsView({ isLoading, setIsLoading }) {
   const [analytics, setAnalytics] = useState(null);
+  const [comprehensionChart, setComprehensionChart] = useState([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fetchAnalytics = async () => {
@@ -345,17 +336,38 @@ function AnalyticsView({ isLoading, setIsLoading }) {
       ]);
 
       if (overviewRes.data.success && accuracyRes.data.success && compRes.data.success) {
+        const compData = compRes.data.data;
         setAnalytics({
           participationRate: `${overviewRes.data.data.avgParticipationPercent}%`,
           aiAccuracy: `${accuracyRes.data.data.accuracyPercent}%`,
-          comprehensionLift: `+${compRes.data.data.comprehensionGapPercent}%`
+          totalResponses: compData.totalResponses || 0,
         });
+
+        // Build bar chart data
+        const withAIScore = compData.withAI ? parseFloat(compData.withAI.avg_score) : 0;
+        const withoutAIScore = compData.withoutAI ? parseFloat(compData.withoutAI.avg_score) : 0;
+        setComprehensionChart([
+          {
+            group: 'Without AI Summary',
+            avgScore: withoutAIScore,
+            responses: compData.withoutAI ? Number(compData.withoutAI.total_responses) : 0,
+          },
+          {
+            group: 'With AI Summary',
+            avgScore: withAIScore,
+            responses: compData.withAI ? Number(compData.withAI.total_responses) : 0,
+          },
+        ]);
       } else {
         throw new Error("Failed to load");
       }
     } catch (err) {
       // Fallback demo data
-      setAnalytics({ participationRate: '42.5%', aiAccuracy: '89.2%', comprehensionLift: '+38%' });
+      setAnalytics({ participationRate: '42.5%', aiAccuracy: '89.2%', totalResponses: 24 });
+      setComprehensionChart([
+        { group: 'Without AI Summary', avgScore: 5.2, responses: 10 },
+        { group: 'With AI Summary', avgScore: 7.4, responses: 14 },
+      ]);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -369,35 +381,87 @@ function AnalyticsView({ isLoading, setIsLoading }) {
   if (isLoading || !analytics) return <div className="animate-pulse h-64 bg-surface/50 rounded-xl"></div>;
 
   return (
-    <div className="glass-panel p-8 text-center space-y-4 relative">
-      <button 
-        onClick={fetchAnalytics}
-        disabled={isRefreshing}
-        className="absolute top-4 right-4 btn-secondary py-1.5 px-3 text-xs flex items-center gap-2"
-      >
-        <Activity className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-        {isRefreshing ? 'Refreshing...' : 'Refresh'}
-      </button>
+    <div className="space-y-8">
+      {/* Top Stats Cards */}
+      <div className="glass-panel p-8 text-center space-y-4 relative">
+        <button 
+          onClick={fetchAnalytics}
+          disabled={isRefreshing}
+          className="absolute top-4 right-4 btn-secondary py-1.5 px-3 text-xs flex items-center gap-2"
+        >
+          <Activity className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+          {isRefreshing ? 'Refreshing...' : 'Refresh'}
+        </button>
 
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-accent/20 to-orange-500/20 mx-auto flex items-center justify-center border border-accent/30">
-        <Activity className="w-8 h-8 text-accent" />
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-accent/20 to-orange-500/20 mx-auto flex items-center justify-center border border-accent/30">
+          <Activity className="w-8 h-8 text-accent" />
+        </div>
+        <h3 className="text-2xl font-semibold mb-6">Governance Analytics</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-surface/50 border border-white/5 rounded-xl p-6 relative overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <p className="text-sm text-muted mb-2 relative z-10">Participation Rate</p>
+            <p className="text-3xl font-bold text-white relative z-10">{analytics.participationRate}</p>
+          </div>
+          <div className="bg-surface/50 border border-white/5 rounded-xl p-6 relative overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-br from-secondary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <p className="text-sm text-muted mb-2 relative z-10">AI Accuracy (vs Manual)</p>
+            <p className="text-3xl font-bold text-white relative z-10">{analytics.aiAccuracy}</p>
+          </div>
+        </div>
       </div>
-      <h3 className="text-2xl font-semibold mb-6">Governance Analytics</h3>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-surface/50 border border-white/5 rounded-xl p-6 relative overflow-hidden group">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          <p className="text-sm text-muted mb-2 relative z-10">Participation Rate</p>
-          <p className="text-3xl font-bold text-white relative z-10">{analytics.participationRate}</p>
+
+      {/* Comprehension Comparison Bar Chart */}
+      <div className="glass-panel p-8 space-y-6">
+        <div className="text-center space-y-2">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-emerald-500/20 mx-auto flex items-center justify-center border border-indigo-500/30">
+            <BrainCircuit className="w-7 h-7 text-indigo-400" />
+          </div>
+          <h3 className="text-xl font-semibold text-white">Avg Comprehension: AI Summary vs No AI Summary</h3>
+          <p className="text-muted text-sm">Self-reported comprehension scores (1–10) from voters after casting their vote</p>
+          {analytics.totalResponses > 0 && (
+            <p className="text-xs text-muted">Based on <span className="text-white font-mono">{analytics.totalResponses}</span> total responses</p>
+          )}
         </div>
-        <div className="bg-surface/50 border border-white/5 rounded-xl p-6 relative overflow-hidden group">
-          <div className="absolute inset-0 bg-gradient-to-br from-secondary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          <p className="text-sm text-muted mb-2 relative z-10">AI Accuracy (vs Manual)</p>
-          <p className="text-3xl font-bold text-white relative z-10">{analytics.aiAccuracy}</p>
-        </div>
-        <div className="bg-surface/50 border border-white/5 rounded-xl p-6 relative overflow-hidden group">
-          <div className="absolute inset-0 bg-gradient-to-br from-accent/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          <p className="text-sm text-muted mb-2 relative z-10">Comprehension Lift</p>
-          <p className="text-3xl font-bold text-white relative z-10">{analytics.comprehensionLift}</p>
+
+        <div className="max-w-2xl mx-auto">
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={comprehensionChart} barGap={24} margin={{ top: 20, right: 30, left: 10, bottom: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                <XAxis dataKey="group" tick={{ fill: '#94a3b8', fontSize: 13 }} axisLine={{ stroke: 'rgba(255,255,255,0.1)' }} />
+                <YAxis domain={[0, 10]} tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={{ stroke: 'rgba(255,255,255,0.1)' }} label={{ value: 'Avg Score', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 12 }} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#151520', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px', padding: '12px 16px' }}
+                  itemStyle={{ color: '#fff' }}
+                  formatter={(value, name) => {
+                    if (name === 'avgScore') return [`${value.toFixed(2)} / 10`, 'Avg Score'];
+                    return [value, name];
+                  }}
+                  labelStyle={{ color: '#94a3b8', fontWeight: 600, marginBottom: 4 }}
+                />
+                <Bar dataKey="avgScore" name="avgScore" radius={[8, 8, 0, 0]} maxBarSize={80} animationDuration={800}>
+                  {comprehensionChart.map((entry, index) => (
+                    <Cell key={`bar-${index}`} fill={index === 0 ? '#f97316' : '#10b981'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Legend cards below chart */}
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            {comprehensionChart.map((item, idx) => (
+              <div key={idx} className="bg-surface/50 border border-white/5 rounded-xl p-4 text-center hover:border-white/10 transition-colors">
+                <div className="flex items-center justify-center gap-2 mb-2">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: idx === 0 ? '#f97316' : '#10b981' }}></div>
+                  <span className="text-xs text-muted">{item.group}</span>
+                </div>
+                <p className="text-2xl font-bold text-white font-mono">{item.avgScore.toFixed(1)}<span className="text-sm text-muted font-normal"> / 10</span></p>
+                <p className="text-xs text-muted mt-1">{item.responses} response{item.responses !== 1 ? 's' : ''}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

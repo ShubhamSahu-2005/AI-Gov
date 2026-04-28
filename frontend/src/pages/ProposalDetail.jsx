@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { ArrowLeft, Send, ThumbsUp, ThumbsDown, Bot, CheckCircle2, XCircle, Undo2 } from 'lucide-react';
+import { ArrowLeft, Send, ThumbsUp, ThumbsDown, Bot, CheckCircle2, XCircle, Undo2, BrainCircuit, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AIPanel from '../components/AIPanel';
 import { useProposalsData } from '../context/ProposalsContext';
@@ -19,6 +19,7 @@ export default function ProposalDetail({ address }) {
   const [showComprehensionModal, setShowComprehensionModal] = useState(false);
   const [comprehensionScore, setComprehensionScore] = useState(0);
   const [submittingComprehension, setSubmittingComprehension] = useState(false);
+  const [showAiSummary, setShowAiSummary] = useState(false);
 
   useEffect(() => {
     const match = proposals.find(p => p.id === id);
@@ -60,7 +61,7 @@ export default function ProposalDetail({ address }) {
     
     try {
       const timeOnPageSeconds = Math.round((Date.now() - startTime) / 1000);
-      const sawAiSummary = !!proposal.aiSummary;
+      const sawAiSummary = showAiSummary;
 
       await axios.post(`${API_URL}/votes`, { 
         proposalId: id, 
@@ -86,7 +87,7 @@ export default function ProposalDetail({ address }) {
       await axios.post(`${API_URL}/votes/comprehension`, {
         proposalId: id,
         comprehensionScore,
-        sawAiSummary: !!proposal.aiSummary,
+        sawAiSummary: showAiSummary,
         timeOnPageSeconds: Math.round((Date.now() - startTime) / 1000)
       }, { withCredentials: true });
       
@@ -201,11 +202,43 @@ export default function ProposalDetail({ address }) {
           <p className="text-white/80 leading-relaxed whitespace-pre-wrap">{proposal.description}</p>
         </div>
 
-        <AIPanel 
-          aiSummary={proposal.aiSummary}
-          aiRiskScore={proposal.aiRiskScore}
-          aiCategory={proposal.aiCategory}
-        />
+        {/* AI Summary Toggle — voter chooses whether to view it */}
+        {proposal.aiSummary && (
+          <div className="mb-8">
+            {!showAiSummary ? (
+              <button
+                onClick={() => setShowAiSummary(true)}
+                className="w-full flex items-center justify-center gap-3 p-5 rounded-xl border border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 transition-all group"
+              >
+                <div className="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <BrainCircuit className="w-5 h-5 text-indigo-400" />
+                </div>
+                <div className="text-left">
+                  <p className="text-white font-semibold flex items-center gap-2">
+                    <Eye className="w-4 h-4" /> View AI Summary & Risk Analysis
+                  </p>
+                  <p className="text-xs text-muted">AI-generated summary and risk evaluation are available for this proposal</p>
+                </div>
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setShowAiSummary(false)}
+                    className="flex items-center gap-1.5 text-xs text-muted hover:text-white transition-colors px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10"
+                  >
+                    <EyeOff className="w-3.5 h-3.5" /> Hide AI Summary
+                  </button>
+                </div>
+                <AIPanel
+                  aiSummary={proposal.aiSummary}
+                  aiRiskScore={proposal.aiRiskScore}
+                  aiCategory={proposal.aiCategory}
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mt-8 pt-8 border-t border-white/10 flex justify-end gap-4">
           {proposal.status === 'draft' ? (
